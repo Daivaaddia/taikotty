@@ -15,4 +15,4 @@ Converts are not supported I don't know how they work yet :>.
 
 If you want to test this out, make sure you have Rust installed. Before running with `cargo run` add your osu! songs folder path in `options.txt`.
 
-It may take a while to start. Also currently working on fixing this.
+When running, it may take a while to start. It currently goes through every song in the songs folder and parses every song. Working on improving this.
