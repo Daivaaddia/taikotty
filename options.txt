@@ -1,0 +1,5 @@
+Songs Path: /media/windows/Apps (Non steam)/osu!/Songs
+Drum Center (Left): f
+Drum Center (Right): j
+Drum Rim (Left): d
+Drum Rim (Right): k
