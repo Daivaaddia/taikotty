@@ -6,7 +6,7 @@ mod loading;
 use std::{error::Error, fs::File, io::{BufRead, BufReader}, path::{Path, PathBuf}, sync::mpsc, thread, time::{Duration, Instant}};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use kira::{AudioManager, AudioManagerSettings, DefaultBackend, sound::static_sound::{StaticSoundData}};
+use kira::{AudioManager, AudioManagerSettings, DefaultBackend, Tween, sound::{FromFileError, static_sound::StaticSoundData, streaming::{StreamingSoundData, StreamingSoundHandle}}};
 use ratatui::{DefaultTerminal, Frame, restore, style::{Color}};
 
 use crate::{beatmap::MapHeader, game::Game, loading::Loading, menu::{Menu, scan_songs_dir}};
@@ -15,6 +15,8 @@ pub const GREEN:  Color = Color::Rgb(0x39, 0xFF, 0x88);
 pub const YELLOW: Color = Color::Rgb(0xFF, 0xD6, 0x2E); 
 pub const BLUE:   Color = Color::Rgb(0x3D, 0x9B, 0xFF); 
 pub const RED:    Color = Color::Rgb(0xFF, 0x2D, 0x3A);
+
+pub const VOLUME: f32 = -20.0;
 
 const OPTIONS_PATH: &str = "options.txt";
 
@@ -27,9 +29,9 @@ pub struct HitSounds {
 impl HitSounds {
     pub fn load() -> Result<Self, Box<dyn Error>> {
         Ok(Self {
-            don: StaticSoundData::from_file("taiko-normal-hitnormal.wav")?,
-            kat: StaticSoundData::from_file("taiko-normal-hitclap.wav")?,
-            miss: StaticSoundData::from_file("combobreak.wav")?,
+            don: StaticSoundData::from_file("taiko-normal-hitnormal.wav")?.volume(VOLUME),
+            kat: StaticSoundData::from_file("taiko-normal-hitclap.wav")?.volume(VOLUME),
+            miss: StaticSoundData::from_file("combobreak.wav")?.volume(VOLUME),
         })
     }
 }
@@ -68,7 +70,8 @@ struct App {
     scene: Scene,
     menu: Menu,
     loading_map: Option<(PathBuf, MapHeader)>,
-    options: Options
+    options: Options,
+    preview: Preview
 }
 enum Event {
     Input(crossterm::event::KeyEvent),
@@ -114,6 +117,8 @@ impl App {
     fn update(&mut self) {
         match &mut self.scene {
             Scene::Menu => {
+                let wanted = self.menu.hovered_audio();
+                self.preview.poll(&mut self.audio_manager, wanted);
             },
             Scene::Game(game) => {
                 if !game.update(&mut self.audio_manager, &self.hitsounds) {
@@ -169,6 +174,7 @@ impl App {
             KeyCode::Enter => {
                 if let Some((path, header)) = self.menu.activate() {
                     self.start_map(path, header);
+                    self.preview.stop();
                 }
             },
             _ => {}
@@ -233,6 +239,56 @@ fn parse_options() -> Result<Options, Box<dyn Error>>{
     Ok(opts)
 }
 
+struct Preview {
+    handle: Option<StreamingSoundHandle<FromFileError>>,
+    playing: Option<PathBuf>,
+}
+
+impl Preview {
+    fn new() -> Self {
+        Self {
+            handle: None,
+            playing: None,
+        }
+    }
+
+    fn poll(&mut self, manager: &mut AudioManager, wanted: Option<(&Path, u32)>) {
+        if let Some(h) = &mut self.handle {
+            if h.pop_error().is_some() {
+                self.stop();
+            }
+        }
+
+        let Some((path, preview_ms)) = wanted else {
+            return;
+        };
+
+        if self.playing == Some(path.to_path_buf()) {
+            return;
+        }
+
+        self.stop();
+        self.playing = Some(path.to_path_buf());
+
+        let Ok(data) = StreamingSoundData::from_file(path) else {
+            return;
+        };
+
+        let start = preview_ms as f64 / 1000.0;
+        let data = data.start_position(start).loop_region(start..).volume(VOLUME);
+
+        self.handle = manager.play(data).ok();
+    }
+
+    fn stop(&mut self) {
+        if let Some(h) = &mut self.handle {
+            h.stop(Tween::default());
+        }
+        self.handle = None;
+        self.playing = None;
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let options = parse_options()?;
 
@@ -253,7 +309,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         menu: Menu::new(songs),
         scene: Scene::Menu,
         loading_map: None,
-        options
+        options,
+        preview: Preview::new(),
     };
 
     let input_tx = event_tx.clone();

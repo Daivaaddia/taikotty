@@ -1,10 +1,10 @@
 use std::{error::Error, path::Path};
 
 use crossterm::event::{KeyCode, KeyEventKind};
-use kira::{AudioManager, Tween, clock::{ClockHandle, ClockSpeed}, sound::static_sound::{StaticSoundData, StaticSoundHandle}};
+use kira::{AudioManager, Tween, clock::{ClockHandle, ClockSpeed}, sound::{FromFileError, static_sound::{StaticSoundData, StaticSoundHandle}, streaming::{StreamingSoundData, StreamingSoundHandle}}};
 use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Rect}, style::{Color, Stylize}, symbols::Marker, text::Line, widgets::{Widget, canvas::{Canvas, Circle, Line as CanvasLine, Painter, Shape}}};
 
-use crate::{HitSounds, Options, beatmap::{Beatmap, MapHeader, NoteType, parse_map}};
+use crate::{HitSounds, Options, VOLUME, beatmap::{Beatmap, MapHeader, NoteType, parse_map}};
 
 const CLOCK_HZ: f64 = 1000.0;
 // TODO time taken for circle to cross screen. This should be based on sv?
@@ -20,7 +20,7 @@ pub const YELLOW: Color = Color::Rgb(0xFF, 0xD6, 0x2E);
 pub const RED:    Color = Color::Rgb(0xFF, 0x2D, 0x3A);
 
 pub struct Game {
-    song_handle: StaticSoundHandle,
+    song_handle: StreamingSoundHandle<FromFileError>,
     clock: ClockHandle,
     beatmap: Beatmap,
     // index of next note to be judged
@@ -61,7 +61,8 @@ impl Game {
         let beatmap = parse_map(path, &header)?;
         let mut clock = manager.add_clock(ClockSpeed::TicksPerSecond(CLOCK_HZ))?;
 
-        let song = StaticSoundData::from_file(&header.song_path)?.start_time(clock.time() + START_OFFSET_TICKS);
+        // let song = StaticSoundData::from_file(&header.song_path)?.start_time(clock.time() + START_OFFSET_TICKS);
+        let song = StreamingSoundData::from_file(&header.song_path)?.start_time(clock.time() + START_OFFSET_TICKS).volume(VOLUME);
         let song_handle = manager.play(song)?;
         clock.start();
 

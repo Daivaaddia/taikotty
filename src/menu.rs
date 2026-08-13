@@ -159,6 +159,15 @@ impl Menu {
             self.rebuild(Some(Row::Song(i)));
         }
     }
+
+    pub fn hovered_audio(&self) -> Option<(&Path, u32)> {
+        let Row::Diff(i, d) = self.selected()? else {
+            return None;
+        };
+        
+        let h = &self.songs[i].diffs[d].header;
+        Some((&h.song_path, h.preview_ms))
+    }
 }
 
 impl Widget for &mut Menu {
